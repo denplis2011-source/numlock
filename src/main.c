@@ -1,75 +1,72 @@
-#include <eadk.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdio.h>
+#include "eadk.h"
+#include <stdbool.h>
 
-const char eadk_app_name[] __attribute__((section(".rodata.eadk_app_name"))) = "App";
-const uint32_t eadk_api_level  __attribute__((section(".rodata.eadk_api_level"))) = 0;
+const char eadk_app_name[] __attribute__((section(".rodata.eadk_app_name"))) = "NumLock";
+const uint32_t eadk_api_level __attribute__((section(".rodata.eadk_api_level"))) = 0;
 
-eadk_color_t random_color() {
-  return (eadk_color_t)eadk_random();
+#define RGB(r, g, b) ((eadk_color_t)((((r) >> 3) << 11) | (((g) >> 2) << 5) | ((b) >> 3)))
+
+#define BG     RGB(20, 20, 30)
+#define GREY   RGB(200, 200, 200)
+#define GOLD   RGB(230, 180, 0)
+#define WHITE  RGB(255, 255, 255)
+#define RED    RGB(255, 80, 80)
+#define GREEN  RGB(0, 255, 0)
+#define BLACK  RGB(0, 0, 0)
+
+static void rect(int x, int y, int w, int h, eadk_color_t c) {
+  eadk_rect_t r = {x, y, w, h};
+  eadk_display_push_rect_uniform(r, c);
 }
 
-eadk_rect_t random_screen_rect() {
-  uint16_t x = eadk_random() % (EADK_SCREEN_WIDTH - 1);
-  uint16_t y = eadk_random() % (EADK_SCREEN_HEIGHT - 1);
-  uint16_t width = eadk_random() % (EADK_SCREEN_WIDTH - x);
-  uint16_t height = eadk_random() % (EADK_SCREEN_HEIGHT - y);
-  return (eadk_rect_t){x, y, width, height};
+static void text(const char *s, int x, int y, eadk_color_t fg, eadk_color_t bg) {
+  eadk_point_t p = {x, y};
+  eadk_display_draw_string(s, p, false, fg, bg);
 }
 
-void draw_random_colorful_rectangles() {
-  eadk_display_push_rect_uniform(eadk_screen_rect, eadk_color_black);
-  for (int i=0; i<100; i++) {
-    eadk_display_push_rect_uniform(random_screen_rect(), random_color());
-  }
+static void lock_screen(void) {
+  rect(0, 0, 320, 240, BG);
+  rect(130, 30, 60, 8, GREY);
+  rect(130, 30, 8, 36, GREY);
+  rect(182, 30, 8, 36, GREY);
+  rect(115, 66, 90, 60, GOLD);
+  rect(156, 86, 8, 22, BG);
+  text("CALCULATRICE VERROUILLEE", 45, 140, RED, BG);
+  text("Pour deverrouiller,", 80, 165, WHITE, BG);
+  text("rendez-la au proprietaire", 52, 185, WHITE, BG);
 }
 
-void draw_random_buffer() {
-  eadk_rect_t rect = {0, 0, 30, 30};
-  size_t bufferSize = rect.width*rect.height*sizeof(eadk_color_t);
-  eadk_color_t * pixels = (eadk_color_t *)malloc(bufferSize);
-  if (pixels == NULL) {
-    return;
-  }
-  memset(pixels, 0, bufferSize);
-  for (int i=0; i<rect.width*rect.height; i++) {
-    pixels[i] = random_color();
-  }
-  eadk_display_push_rect(rect, pixels);
-  free(pixels);
+static void message(const char *s) {
+  rect(0, 0, 320, 240, BLACK);
+  text(s, 100, 110, GREEN, BLACK);
 }
 
-void move_pointer() {
-  uint16_t size = 10;
-  eadk_rect_t cursor = {(EADK_SCREEN_WIDTH-size)/2, (EADK_SCREEN_HEIGHT-size)/2, size, size};
+static bool unlock_pressed(eadk_keyboard_state_t k) {
+  return eadk_keyboard_key_down(k, eadk_key_shift) &&
+         eadk_keyboard_key_down(k, eadk_key_one) &&
+         eadk_keyboard_key_down(k, eadk_key_ans);
+}
+
+static bool hidden_pressed(eadk_keyboard_state_t k) {
+  return eadk_keyboard_key_down(k, eadk_key_shift) &&
+         eadk_keyboard_key_down(k, eadk_key_two) &&
+         eadk_keyboard_key_down(k, eadk_key_ans);
+}
+
+int main(int argc, char *argv[]) {
+  lock_screen();
   while (true) {
-    eadk_keyboard_state_t keyboard = eadk_keyboard_scan();
-    if (eadk_keyboard_key_down(keyboard, eadk_key_back)) {
-      return;
+    eadk_keyboard_state_t k = eadk_keyboard_scan();
+    if (unlock_pressed(k)) {
+      message("Deverrouille");
+      eadk_timing_msleep(1000);
+      return 0;
     }
-    if (eadk_keyboard_key_down(keyboard, eadk_key_left) && cursor.x > 0) {
-      cursor.x -= 1;
+    if (hidden_pressed(k)) {
+      message("Mode cache !");
+      eadk_timing_msleep(2000);
+      lock_screen();
     }
-    if (eadk_keyboard_key_down(keyboard, eadk_key_up) && cursor.y > 0) {
-      cursor.y -= 1;
-    }
-    if (eadk_keyboard_key_down(keyboard, eadk_key_right) && cursor.x < EADK_SCREEN_WIDTH-size ) {
-      cursor.x += 1;
-    }
-    if (eadk_keyboard_key_down(keyboard, eadk_key_down) && cursor.y < EADK_SCREEN_HEIGHT-size) {
-      cursor.y += 1;
-    }
-    eadk_display_push_rect_uniform(cursor, random_color());
-    eadk_timing_msleep(20);
+    eadk_timing_msleep(50);
   }
-}
-
-int main(int argc, char * argv[]) {
-  printf("External data : '%s'\n", eadk_external_data);
-  eadk_timing_msleep(3000);
-  draw_random_colorful_rectangles();
-  draw_random_buffer();
-  eadk_display_draw_string("Hello, world!", (eadk_point_t){0, 0}, true, eadk_color_black, eadk_color_white);
-  move_pointer();
 }
